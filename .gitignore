@@ -13,11 +13,7 @@ pids
 logs
 results
 node_modules
-plexi_modules
-workspace
-download
-mongodb
-data
 
 npm-debug.log
+.plexi
 php-config.ini
