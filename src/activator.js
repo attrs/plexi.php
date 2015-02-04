@@ -8,11 +8,8 @@ module.exports = {
 	start: function(ctx) {
 		var options = ctx.preference;
 		
-		var create = function(name, config) {			
-			var out = config.console ? process.stdout : null;
-			var launcher = Launcher.create(name, config).start(out);
-			console.log('[php] server(' + name + ') started. [' + launcher.host + ':' + launcher.port + ', "' + launcher.docbase + '"]');
-			return launcher;
+		var create = function(name, config) {
+			return Launcher.create(name, config).start(config.console ? process.stdout : null);
 		};
 		
 		var instances = options.instances;
@@ -26,18 +23,11 @@ module.exports = {
 			filter: function(req, res, next) {
 				if( !req.docbase ) return next(new Error('[php] req.docbase required'));
 				
-				var first;
 				var launcher = Launcher.get(req.docbase);
+				var first;				
 				if( !launcher ) {
 					first = true;
-					launcher = create(req.docbase, {
-						docbase: req.docbase
-					});
-				}
-				
-				var clientcookie = [];
-				for(var k in req.cookies) {
-					clientcookie.push(k + '=' + req.cookies[k]);
+					launcher = create(req.docbase, {docbase: req.docbase});
 				}
 				
 				var exec = function() {
@@ -46,25 +36,15 @@ module.exports = {
 						port: launcher.port,
 						path: req.url,
 						method: req.method,
-						headers: {
-							Cookie: clientcookie.join('; ')
-						}
+						headers: req.headers
 					}, function(response) {						
 						//console.log('STATUS: ' + response.statusCode);
 						//console.log('HEADERS: ' + JSON.stringify(response.headers));					
 						res.statusCode = response.statusCode;
 						response.setEncoding('utf8');
-						if( response.headers['content-type'] ) res.setHeader('Content-Type', response.headers['content-type']);
-						
-						//res.cookie('name', 'tobi', { domain: '.example.com', path: '/admin', secure: true })
-						var cookies = response.headers['set-cookie'];
-						if( typeof cookies === 'string' ) cookies = [cookies];
-						if( cookies ) {
-							var cookiearg = [];
-							cookies.forEach(function(cookie) {
-								cookiearg.push(cookie);
-							});
-							res.setHeader('Set-Cookie', cookiearg);
+						res.headers = response.headers;
+						for(var k in response.headers) {
+							res.setHeader(k, response.headers[k]);
 						}
 						
 						var poweredby = (response.headers['x-powered-by'] || '').split(',');
@@ -88,20 +68,17 @@ module.exports = {
 					request.end();
 				};
 				
-				if( first ) {
+				if( !first ) {
+					exec();
+				} else {
 					setTimeout(function() {
 						exec();
 					}, 1500);
-				} else {
-					exec();
 				}
 			}
 		});
 		
 		return {
-			execute: function(file) {
-				return Launcher.execute(file);
-			},
 			create: function(name, config) {
 				return create(name, config);
 			},

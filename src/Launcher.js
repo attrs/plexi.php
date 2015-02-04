@@ -4,6 +4,8 @@ var fs = require('fs');
 var exec = require('child_process').exec;
 var ini = require('ini');
 
+var ENV = {};
+
 // class Launcher
 function Launcher(name, options) {
 	if( !name || typeof(name) !== 'string' ) throw new Error('illegal name:' + name);	
@@ -39,10 +41,20 @@ Launcher.prototype = {
 	start: function(monitor) {
 		if( typeof(monitor) === 'function' ) monitor = {write:monitor};
 		
+		var self = this;
+		var name = this.name;
+		var command = this.command;
+		var cwd = this.cwd;
+		
 		//console.log(this.command);
-		var child = exec(this.command, {
+		var child = this.child = exec(command, {
 			encoding: 'utf8',
-			cwd: this.cwd
+			cwd: cwd,
+			env: ENV
+		}, function(err, stdout, stderr) {
+			if( err ) return console.error('[php] startup error(' + name + ')', command, err);
+		}).on('exit', function(code) {
+			self.child = null;
 		});
 		
 		child.stdout.setEncoding('utf8');
@@ -54,18 +66,8 @@ Launcher.prototype = {
 			if( monitor && monitor.write ) monitor.write(data);
 		});
 		
-		var self = this;
-		child.on('exit', function(code) {
-			self.child = null;
-			console.log('[' + self.name + '] process stopped(exit) [' + self.command + ']');
-		});
-		child.on('uncaughtException', function(err) {
-			console.log('process error: ' + err);
-		});
+		console.log('[php] startup(' + name + ') [' + command + ']');
 		
-		console.log('[php] process(' + this.name + ') started [' + this.command + ']');
-		
-		this.child = child;	
 		return this;
 	},
 	pid: function() {
@@ -79,7 +81,7 @@ Launcher.prototype = {
 		if( this.child ) {
 			code = this.child.kill('SIGHUP');
 			this.child = null;
-			console.log('[php] process(' + this.name + ') stopped(' + code + ') [' + this.command + ']');
+			console.log('[php] stopped(' + this.name + ') [code=' + code + '] [' + this.command + ']');
 		}
 		return code;
 	}
@@ -87,6 +89,21 @@ Launcher.prototype = {
 
 var processes = {};
 module.exports = {
+	env: function(key, value) {
+		if( !arguments.length ) return ENV;
+		if( arguments.length === 1 ) {
+			if( typeof key === 'string' ) {
+				return ENV[key];
+			} else if( typeof key === 'object' ) {
+				ENV = key;
+			}
+			return this;
+		}
+		
+		if( typeof key !== 'string' ) return console.error('illegal env key', key);
+		ENV[key] = value;		
+		return this;
+	},
 	names: function() {
 		var arr = [];
 		for(var k in processes) arr.push(k);
