@@ -2,6 +2,7 @@ var Launcher = require('./Launcher.js');
 var path = require('path');
 var fs = require('fs');
 var http = require('http');
+var pkg = require('../package.json');
 
 module.exports = {
 	start: function(ctx) {
@@ -34,19 +35,42 @@ module.exports = {
 					});
 				}
 				
+				var clientcookie = [];
+				for(var k in req.cookies) {
+					clientcookie.push(k + '=' + req.cookies[k]);
+				}
+				
 				var exec = function() {
 					var request = http.request({
 						hostname: launcher.host,
 						port: launcher.port,
 						path: req.url,
-						method: req.method
-					}, function(response) {
-						if( ~[404].indexOf(response.statusCode) ) return next();
-						
+						method: req.method,
+						headers: {
+							Cookie: clientcookie.join('; ')
+						}
+					}, function(response) {						
 						//console.log('STATUS: ' + response.statusCode);
 						//console.log('HEADERS: ' + JSON.stringify(response.headers));					
 						res.statusCode = response.statusCode;
 						response.setEncoding('utf8');
+						if( response.headers['content-type'] ) res.setHeader('Content-Type', response.headers['content-type']);
+						
+						//res.cookie('name', 'tobi', { domain: '.example.com', path: '/admin', secure: true })
+						var cookies = response.headers['set-cookie'];
+						if( typeof cookies === 'string' ) cookies = [cookies];
+						if( cookies ) {
+							var cookiearg = [];
+							cookies.forEach(function(cookie) {
+								cookiearg.push(cookie);
+							});
+							res.setHeader('Set-Cookie', cookiearg);
+						}
+						
+						var poweredby = (response.headers['x-powered-by'] || '').split(',');
+						poweredby.push(res.getHeader('X-Powered-By') || 'plexi');
+						poweredby.push(pkg.name + '@' + pkg.version);
+						res.setHeader('X-Powered-By', poweredby.join(', '));
 						
 						var payload = '';
 						response.on('data', function (chunk) {
