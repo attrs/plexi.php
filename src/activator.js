@@ -37,7 +37,7 @@ module.exports = {
 						path: req.url,
 						method: req.method,
 						headers: req.headers
-					}, function(response) {						
+					}, function(response) {
 						//console.log('STATUS: ' + response.statusCode);
 						//console.log('HEADERS: ' + JSON.stringify(response.headers));					
 						res.statusCode = response.statusCode;
@@ -52,20 +52,33 @@ module.exports = {
 						poweredby.push(pkg.name + '@' + pkg.version);
 						res.setHeader('X-Powered-By', poweredby.join(', '));
 						
-						var payload = '';
+						if( ~[404,500].indexOf(response.statusCode) ) {
+							var payload = '';
+							response.on('data', function (chunk) {
+								payload += chunk;
+							});
+
+							response.on('end', function () {
+								res.statusCode = response.statusCode;
+								next(payload);
+							});
+							return;
+						}
+						
 						response.on('data', function (chunk) {
-							payload += chunk;
+							res.write(chunk);
 						});
 
 						response.on('end', function () {
-							res.send(payload);
+							res.end();
 						});
 					});
 
 					request.on('error', function(err) {
 						next(err);
 					});
-					request.end();
+					
+					req.pipe(request, {end:true});
 				};
 				
 				if( !first ) {
