@@ -7,7 +7,7 @@ var PHPError = require('./PHPError.js');
 
 var phprouter = function(options) {
 	return function php(req, res, next) {
-		if( !req.docbase || !fs.existsSync(req.docbase) || !fs.statSync(req.docbase).isDirectory() ) return next();
+		if( !req.docbase || !fs.existsSync(req.docbase) || !fs.statSync(req.docbase).isDirectory() || !fs.existsSync(path.join(req.docbase, req.path)) ) return next();
 	
 		var launcher = Launcher.get(req.docbase);
 		var first;				
