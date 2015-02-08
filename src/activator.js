@@ -3,7 +3,10 @@ var path = require('path');
 var fs = require('fs');
 var http = require('http');
 var pkg = require('../package.json');
-var PHPError = require('./PHPError.js');
+var util = require('./util.js');
+var chalk = require('chalk');
+
+var PHPError = util.createErrorType('PHPError');
 
 var phprouter = function(options) {
 	return function php(req, res, next) {
@@ -16,15 +19,39 @@ var phprouter = function(options) {
 			launcher = Launcher.create(req.docbase, {docbase: req.docbase}).start();
 		}
 	
-		var exec = function() {
+		var exec = function() {			
+			var requestheader = util.mix({}, req.headers, {
+				'accept-encoding': null,
+				'x-forwarded-host': req.headers.host,
+				'x-forwarded-path': req.originalUrl.substring(0, req.originalUrl.indexOf(req.url))
+			});
+							
 			var request = http.request({
 				hostname: launcher.host,
 				port: launcher.port,
 				path: req.url,
 				method: req.method,
-				headers: req.headers
+				headers: requestheader
 			}, function(response) {
-				//console.log('STATUS: ' + response.statusCode);
+				if( req.app.debug ) {
+					var status = chalk.green(response.statusCode);
+					if( response.statusCode === 404 ) {
+						status = chalk.red(response.statusCode);
+					} else if( response.statusCode === 500 ) {
+						status = chalk.red(response.statusCode);
+					}
+					util.debug('php:router', status, '://' + launcher.host + ':' + launcher.port + req.url);
+					/*util.debug('php:router', 'request', {
+						hostname: launcher.host,
+						port: launcher.port,
+						path: req.url,
+						method: req.method,
+						headers: requestheader
+					});
+					util.debug('php:router', 'response', response.headers);
+					*/
+				}
+				
 				//console.log('HEADERS: ' + JSON.stringify(response.headers));
 				if( response.statusCode === 404 ) {
 					return next();
@@ -47,7 +74,7 @@ var phprouter = function(options) {
 					res.setHeader(k, response.headers[k]);
 				}
 			
-				var poweredby = (response.headers['x-powered-by'] || '').split(',');
+				var poweredby = (response.headers['x-powered-by'] || '').split(/ *, */).filter(Boolean);
 				poweredby.push(res.getHeader('X-Powered-By') || 'plexi');
 				poweredby.push(pkg.name + '@' + pkg.version);
 				res.setHeader('X-Powered-By', poweredby.join(', '));
