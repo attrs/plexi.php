@@ -5,7 +5,6 @@ var http = require('http');
 var pkg = require('../package.json');
 var util = require('./util.js');
 var chalk = require('chalk');
-
 var PHPError = util.createErrorType('PHPError');
 
 var phprouter = function(options) {
@@ -19,80 +18,42 @@ var phprouter = function(options) {
 			launcher = Launcher.create(req.docbase, {docbase: req.docbase}).start();
 		}
 	
+		var debug = req.app.debug;
 		var exec = function() {			
-			var requestheader = util.mix({}, req.headers, {
-				'accept-encoding': null,
-				'x-forwarded-host': req.headers.host,
-				'x-forwarded-path': req.originalUrl.substring(0, req.originalUrl.indexOf(req.url))
-			});
-							
-			var request = http.request({
+			util.forward({
 				hostname: launcher.host,
 				port: launcher.port,
-				path: req.url,
-				method: req.method,
-				headers: requestheader
-			}, function(response) {
-				if( req.app.debug ) {
-					var status = chalk.green(response.statusCode);
-					if( response.statusCode === 404 ) {
-						status = chalk.red(response.statusCode);
-					} else if( response.statusCode === 500 ) {
-						status = chalk.red(response.statusCode);
-					}
-					util.debug('php:router', status, '://' + launcher.host + ':' + launcher.port + req.url);
-					/*util.debug('php:router', 'request', {
-						hostname: launcher.host,
-						port: launcher.port,
-						path: req.url,
-						method: req.method,
-						headers: requestheader
-					});
-					util.debug('php:router', 'response', response.headers);
-					*/
-				}
-				
-				//console.log('HEADERS: ' + JSON.stringify(response.headers));
-				if( response.statusCode === 404 ) {
-					return next();
-				} else if( response.statusCode === 500 ) {
-					var payload = '';
-					response.on('data', function (chunk) {
-						payload += chunk;
-					});
-
-					response.on('end', function () {
-						next(new PHPError(payload || 'unknown'));
-					});
-					return;
-				}
-						
-				res.statusCode = response.statusCode;
-				response.setEncoding('utf8');
-				res.headers = response.headers;
-				for(var k in response.headers) {
-					res.setHeader(k, response.headers[k]);
-				}
-			
-				var poweredby = (response.headers['x-powered-by'] || '').split(/ *, */).filter(Boolean);
-				poweredby.push(res.getHeader('X-Powered-By') || 'plexi');
-				poweredby.push(pkg.name + '@' + pkg.version);
-				res.setHeader('X-Powered-By', poweredby.join(', '));
-			
-				response.on('data', function (chunk) {
-					res.write(chunk);
-				});
-
-				response.on('end', function () {
-					res.end();
-				});
-			});
-
-			request.on('error', function(err) {
+				path: req.url
+			}, req, res, next)
+			.on('error', function(err, request) {
+				if( debug ) util.debug(pkg.name, 'error', '://' + request.hostname + ':' + request.port + request.path);
 				next(err);
+			})
+			.on('notfound', function(err, request, response) {
+				next();
+			})
+			.on('errorstatus', function(err, request, response) {
+				next(err);
+			})
+			.on('response', function(request, response) {
+				if( debug ) {
+					var status = response.statusCode;
+					if( response.statusCode >= 400 ) status = chalk.red(status);
+					else status = chalk.green(status);
+					
+					util.debug('php', status, request.method, '://' + launcher.host + ':' + launcher.port + request.path);
+					if( debug === 'detail' ) {
+						util.debug(pkg.name, 'request', {
+							hostname: request.hostname,
+							path: request.path,
+							method: req.method,
+							port: request.port,
+							headers: request.headers
+						});
+						util.debug('php', 'response', response.headers);
+					}
+				}
 			});
-		
-			req.pipe(request, {end:true});
 		};
 	
 		if( !first ) {
