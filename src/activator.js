@@ -3,7 +3,7 @@ var path = require('path');
 var fs = require('fs');
 var http = require('http');
 var pkg = require('../package.json');
-var util = require('./util.js');
+var util = require('attrs.util');
 var chalk = require('chalk');
 var PHPError = util.createErrorType('PHPError');
 
@@ -68,13 +68,13 @@ var phprouter = function(options) {
 
 module.exports = {
 	start: function(ctx) {
-		var options = ctx.preference;
+		var pref = ctx.preference || {};
 		
 		var create = function(docbase, config) {
 			return Launcher.create(docbase, config).start(config.console ? process.stdout : null);
 		};
 		
-		var instances = options.instances;
+		var instances = pref.instances;
 		for(var k in instances) {
 			create(k, instances[k]);
 		}
