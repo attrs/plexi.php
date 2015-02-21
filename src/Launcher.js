@@ -45,12 +45,11 @@ Launcher.prototype = {
 			encoding: 'utf8',
 			cwd: cwd,
 			env: ENV
-		}).on('exit', function (code, signal) {
-			util.debug('php', 'exit', code, signal);
-			self.child = null;
 		}).on('close', function (code, signal) {
 			util.debug('php', 'closed', code, signal);
 			self.child = null;
+		}).on('error', function(err) {
+			util.error('php', 'process error', err);
 		});
 		
 		child.stdout.setEncoding('utf8');
