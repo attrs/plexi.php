@@ -1,40 +1,24 @@
 var path = require('path');
 var c = require('chalk');
 var fs = require('fs');
-var exec = require('child_process').exec;
+var spawn = require('child_process').spawn;
 var ini = require('ini');
+var util = require('attrs.util');
 
 var ENV = {};
+var PORT_SEQ = 20200;
+var PHPCONFIG = {bin:'php'};
+try {
+	PHPCONFIG = ini.parse(fs.readFileSync(path.resolve(__dirname, '../php-config.ini'), 'utf-8'));
+} catch(err) {
+}
 
 // class Launcher
 function Launcher(name, options) {
-	if( !name || typeof(name) !== 'string' ) throw new Error('illegal name:' + name);	
-	if( !options.docbase ) throw new Error('illegal docbase', docbase);
+	if( !name || typeof(name) !== 'string' ) throw new Error('missing arguments:name');	
 	
-	this.options = options = options || {};
-	var port = parseInt(options.port) || (Launcher.port_seq++);
-	var host = options.host || '127.0.0.1';
-	var docbase = path.resolve(process.cwd(), options.docbase);
-	
-	var cwd = docbase;
-	var bin = Launcher.phpconfig.bin;
-	var command = bin + ' -S ' + host + ':' + port;
-		
 	this.name = name;
-	this.cwd = cwd;
-	this.bin = bin;
-	this.port = port;
-	this.host = host;
-	this.docbase = docbase;
-	this.command = command;
-	this.options = options;
-};
-
-Launcher.port_seq = 20200;
-Launcher.phpconfig = {bin:'php'};
-try {
-	Launcher.phpconfig = ini.parse(fs.readFileSync(path.resolve(__dirname, '../php-config.ini'), 'utf-8'));
-} catch(err) {
+	this.options = options = options || {};
 }
 
 Launcher.prototype = {
@@ -43,17 +27,29 @@ Launcher.prototype = {
 		
 		var self = this;
 		var name = this.name;
-		var command = this.command;
-		var cwd = this.cwd;
+		var options = this.options;
+		
+		if( !options.docbase || typeof options.docbase !== 'string' ) throw new Error('missing arguments:options.docbase');	
+				
+		var port = parseInt(options.port) || (PORT_SEQ++);
+		var host = options.host || '127.0.0.1';
+		var docbase = path.resolve(process.cwd(), options.docbase);	
+		var cwd = docbase;
+		var bin = PHPCONFIG.bin;
+		var argv = ['-S', host + ':' + port];
+		
+		if( !fs.existsSync(docbase) ) throw new Error('not exist docbase:' + docbase);
 		
 		//console.log(this.command);
-		var child = this.child = exec(command, {
+		var child = this.child = spawn(bin, argv, {
 			encoding: 'utf8',
 			cwd: cwd,
 			env: ENV
-		}, function(err, stdout, stderr) {
-			if( err ) return console.error('[php] startup error(' + name + ')', command, err);
-		}).on('exit', function(code) {
+		}).on('exit', function (code, signal) {
+			util.debug('php', 'exit', code, signal);
+			self.child = null;
+		}).on('close', function (code, signal) {
+			util.debug('php', 'closed', code, signal);
 			self.child = null;
 		});
 		
@@ -66,7 +62,10 @@ Launcher.prototype = {
 			if( monitor && monitor.write ) monitor.write(data);
 		});
 		
-		console.log('[php] startup(' + name + ') [' + command + ']');
+		util.debug('php', 'startup(' + name + ')', bin, argv);
+		
+		this.port = port;
+		this.host = host;
 		
 		return this;
 	},
@@ -79,9 +78,9 @@ Launcher.prototype = {
 	stop: function() {
 		var code = -1;		
 		if( this.child ) {
-			code = this.child.kill('SIGHUP');
+			code = this.child.kill();
 			this.child = null;
-			console.log('[php] stopped(' + this.name + ') [code=' + code + '] [' + this.command + ']');
+			util.debug('php', 'stopped(' + this.name + ') [code=' + code + ']', this.argv);
 		}
 		return code;
 	}
