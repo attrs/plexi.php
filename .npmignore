@@ -16,4 +16,4 @@ mongodb/
 download/
 data/
 
-php-config.ini
+config.ini
