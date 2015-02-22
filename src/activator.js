@@ -68,10 +68,18 @@ var phprouter = function(options) {
 
 module.exports = {
 	start: function(ctx) {
-		var pref = ctx.preference || {};
+		var pref = ctx.preference;
 		
+		if( !pref ) {
+			pref = ctx.application.preferences.set('plexi.php', {
+				console: false,
+				instances: {}
+			});
+			ctx.application.preferences.save();
+		}
+				
 		var create = function(docbase, config) {
-			return Launcher.create(docbase, config).start(config.console ? process.stdout : null);
+			return Launcher.create(docbase, config).start((pref.console ? process.stdout : null), (pref.console ? process.stderr : null));
 		};
 		
 		var instances = pref.instances;

@@ -2,16 +2,21 @@ var path = require('path');
 var c = require('chalk');
 var fs = require('fs');
 var spawn = require('child_process').spawn;
-var ini = require('ini');
 var util = require('attrs.util');
 
 var ENV = {};
 var PORT_SEQ = 20200;
-var PHPCONFIG = {bin:'php'};
+var ini = {};
+var PHPBIN;
+
 try {
-	PHPCONFIG = ini.parse(fs.readFileSync(path.resolve(__dirname, '../php-config.ini'), 'utf-8'));
+	ini = require('ini').parse(fs.readFileSync(path.resolve(__dirname, '../config.ini'), 'utf-8'));
 } catch(err) {
 }
+
+PHPBIN = ini.phpbin || 'php';
+
+util.debug('php', 'phpbin', PHPBIN);
 
 // class Launcher
 function Launcher(name, options) {
@@ -22,9 +27,7 @@ function Launcher(name, options) {
 }
 
 Launcher.prototype = {
-	start: function(monitor) {
-		if( typeof(monitor) === 'function' ) monitor = {write:monitor};
-		
+	start: function(stdout, stderr) {		
 		var self = this;
 		var name = this.name;
 		var options = this.options;
@@ -35,7 +38,7 @@ Launcher.prototype = {
 		var host = options.host || '127.0.0.1';
 		var docbase = path.resolve(process.cwd(), options.docbase);	
 		var cwd = docbase;
-		var bin = PHPCONFIG.bin;
+		var bin = PHPBIN;
 		var argv = ['-S', host + ':' + port];
 		
 		if( !fs.existsSync(docbase) ) throw new Error('not exist docbase:' + docbase);
@@ -54,12 +57,9 @@ Launcher.prototype = {
 		
 		child.stdout.setEncoding('utf8');
 		child.stderr.setEncoding('utf8');
-		child.stdout.on('data', function(data) {
-			if( monitor && monitor.write ) monitor.write(data);
-		});
-		child.stderr.on('data', function (data) {
-			if( monitor && monitor.write ) monitor.write(data);
-		});
+	
+		if( stdout ) child.stdout.pipe(stdout);
+		if( stderr || stdout ) child.stderr.pipe(stderr || stdout);
 		
 		util.debug('php', 'startup(' + name + ')', bin, argv);
 		
@@ -87,6 +87,12 @@ Launcher.prototype = {
 
 var processes = {};
 module.exports = {
+	get bin() {
+		
+	},
+	set bin(bin) {
+				
+	},
 	env: function(key, value) {
 		if( !arguments.length ) return ENV;
 		if( arguments.length === 1 ) {
