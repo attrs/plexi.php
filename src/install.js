@@ -11,7 +11,6 @@ var progress = require('download-status');
 var wrench = require('wrench');
 var ProgressBar = require('progress');
 var inquirer = require("inquirer");
-var targz = require('tar.gz');
 
 function start() {
 	var detected = [];
@@ -22,7 +21,7 @@ function start() {
 				var files = fs.readdirSync(phpdir);
 
 				for(var i=0; i < files.length; i++) {
-					var phpbin = path.resolve(phpdir, files[i], 'bin', 'php.exe');					
+					var phpbin = path.resolve(phpdir, files[i], 'php.exe');					
 					if( fs.existsSync(phpbin) && (~files[i].indexOf('php5.4') || ~files[i].indexOf('php5.5') || ~files[i].indexOf('php5.6')) ) detected.push(phpbin);
 				}
 			}
@@ -65,27 +64,27 @@ function start() {
 			}
 		}, {
 			type: "list",
-			name: "phpbin",
+			name: "download",
 			message: "PHP Download",
 			choices: [ "5.6(x64)", "5.6(x86)", "5.5(x64)", "5.5(x86)", "5.4(x86)" ],
 			when: function(value) {
 				if( value.phpbin === 'Download' ) return true;
-			},
-			validate: function(value) {
-				var done = this.async();
-				
-				download(value, function(err, dir) {
-					if( err ) return console.error(chalk.red('[tomcat] install error'), err);
-					done(true);
-				});
 			}
 		}
 	], function( answers ) {
-		console.log('answers', answers);
-		
-		fs.writeFileSync(path.resolve(__dirname, '..', 'config.ini'), ini.stringify({
-			phpbin: answers.phpbin
-		}));
+		if( answers.download ) {
+			download(answers.download, function(err, dir) {
+				if( err ) return console.error(chalk.red('[tomcat] install error'), err);
+				
+				fs.writeFileSync(path.resolve(__dirname, '..', 'config.ini'), ini.stringify({
+					phpbin: path.resolve(dir, 'php.exe')
+				}));
+			});
+		} else {
+			fs.writeFileSync(path.resolve(__dirname, '..', 'config.ini'), ini.stringify({
+				phpbin: answers.phpbin
+			}));
+		}		
 	});
 };
 
@@ -121,31 +120,17 @@ function download(version, callback) {
 	}
 	
 	if( !fs.existsSync(cachefile) ) {
-		new Download({ mode: '755' })
+		new Download({extract: true, strip: 1, mode: '755' })
 		    .get(url)
-		    .dest(cachedir)
+		    .dest(cachefile)
 			.use(function(instance, url) {
 				process.stdout.write(chalk.green('Download\n'));
 			})
 			.use(progress())
 			.run(function (err, files, stream) {
-			    if (err) {
-					fs.unlinkSync(cachefile);
-					return callback(err);
-				}
+			    if (err) return callback(err);
 				
-				new targz().extract(cachefile, cachedir, function(err){
-				    if(err) {
-						fs.unlinkSync(cachefile);
-						return callback(err);
-					}
-					
-					var extracted = cachefile.substring(0, cachefile.toLowerCase().lastIndexOf('.zip'));
-					fs.unlinkSync(cachefile);
-					fs.renameSync(extracted, cachefile);
-					
-					callback(null, cachefile);
-				});
+				callback(null, cachefile);
 			});
 	} else {
 		callback(null, cachefile);
