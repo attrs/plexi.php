@@ -21,7 +21,6 @@
     "inquirer": "^0.8.0",
     "osenv": "^0.1.0",
     "progress": "^1.1.8",
-    "tar.gz": "^0.1.1",
     "wrench": "^1.5.8"
   },
   "author": "joje <joje.attrs@gmail.com>",

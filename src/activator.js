@@ -8,6 +8,8 @@ var chalk = require('chalk');
 var PHPError = util.createErrorType('PHPError');
 
 var phprouter = function(options) {
+	options = options || {};
+	
 	return function php(req, res, next) {
 		if( !req.docbase || !fs.existsSync(req.docbase) || !fs.statSync(req.docbase).isDirectory() || !fs.existsSync(path.join(req.docbase, req.path)) ) return next();
 	
@@ -15,7 +17,7 @@ var phprouter = function(options) {
 		var first;				
 		if( !launcher ) {
 			first = true;
-			launcher = Launcher.create(req.docbase, {docbase: req.docbase}).start();
+			launcher = Launcher.create(req.docbase, {docbase: req.docbase}).start((options.console ? process.stdout : null), (options.console ? process.stderr : null));
 		}
 	
 		var debug = req.app.debug;
@@ -91,7 +93,9 @@ module.exports = {
 		httpService.filter('php', {
 			pattern: ['**/*.php'],
 			staticrouting: false,
-			filter: phprouter()
+			filter: phprouter({
+				console: pref.console
+			})
 		});
 		
 		return {

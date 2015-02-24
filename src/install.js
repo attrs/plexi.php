@@ -12,7 +12,63 @@ var wrench = require('wrench');
 var ProgressBar = require('progress');
 var inquirer = require("inquirer");
 
-function start() {
+function download(options, callback) {	
+	callback = (typeof callback === 'function') ? callback : function(err) {
+		if( err ) throw err;
+	};
+	
+	if( typeof options !== 'object' ) return callback(new Error('invalid options:' + JSON.stringify(options)));
+	if( !options.url ) return callback(new Error('options.url missing:' + JSON.stringify(options)));
+	if( !options.dest && !options.dir ) return callback(new Error('options.dest or dir missing:' + JSON.stringify(options)));
+	
+	var url = options.url;
+	var dir = options.dir;
+	var dest = options.dest;
+	var extract = options.extract ? true : false;
+	var strip = typeof options.strip === 'number' ? options.strip : 1;
+	var mode = options.mode || '755';
+	var filename = url.substring(url.lastIndexOf('/') + 1);
+	
+	if( dir ) dest = path.resolve(dir, filename);
+	else if( dest ) dir = path.resolve(dest, '..');
+		
+	if( !fs.existsSync(dir) ) {
+		try {
+			wrench.mkdirSyncRecursive(dir, 0777);
+		} catch(err) {
+			dir = path.resolve(process, '..', 'download');
+			dest = path.resolve(dir, filename);
+			wrench.mkdirSyncRecursive(dir);
+		}
+	}
+	
+	if( !fs.existsSync(dest) ) {
+		new Download({extract: extract, strip: strip, mode: mode })
+		    .get(url)
+		    .dest(dest)
+			.use(function(instance, url) {
+				process.stdout.write(chalk.green('Download\n'));
+			})
+			.use(progress())
+			.run(function (err, files, stream) {
+			    if (err) return callback(err);
+				
+				callback(null, dest);
+			});
+	} else {
+		callback(null, dest);
+	}
+}
+
+function phpinstall(callback) {
+	var phpurls = {
+		'5.6(x64)': 'http://windows.php.net/downloads/releases/php-5.6.6-Win32-VC11-x64.zip',
+		'5.6(x86)': 'http://windows.php.net/downloads/releases/php-5.6.6-Win32-VC11-x86.zip',
+		'5.5(x64)': 'http://windows.php.net/downloads/releases/php-5.5.22-Win32-VC11-x64.zip',
+		'5.5(x86)': 'http://windows.php.net/downloads/releases/php-5.5.22-Win32-VC11-x86.zip',
+		'5.4(x86)': 'http://windows.php.net/downloads/releases/php-5.4.38-Win32-VC9-x86.zip'
+	};
+	
 	var detected = [];
 		
 	if( process.platform.indexOf('win') === 0 ) {
@@ -60,11 +116,11 @@ function start() {
 				if( value.phpbin === 'Input path directly' ) return true;
 			},
 			validate: function(value) {
-				if( !value || fs.existsSync(value) ) return true;
+				if( !value || (fs.existsSync(value) && fs.statSync(value).isFile()) ) return true;
 			}
 		}, {
 			type: "list",
-			name: "download",
+			name: "version",
 			message: "PHP Download",
 			choices: [ "5.6(x64)", "5.6(x86)", "5.5(x64)", "5.5(x86)", "5.4(x86)" ],
 			when: function(value) {
@@ -72,69 +128,27 @@ function start() {
 			}
 		}
 	], function( answers ) {
-		if( answers.download ) {
-			download(answers.download, function(err, dir) {
-				if( err ) return console.error(chalk.red('[tomcat] install error'), err);
+		if( answers.version ) {
+			download({
+				url: phpurls[answers.version],
+				dir: path.resolve(osenv.home(), '.plexi', 'php'),
+				extract: true
+			}, function(err, dir) {
+				if( err ) return callback(err);
 				
-				fs.writeFileSync(path.resolve(__dirname, '..', 'config.ini'), ini.stringify({
-					phpbin: path.resolve(dir, 'php.exe')
-				}));
+				callback(null, path.resolve(dir, 'php.exe'));
 			});
 		} else {
-			fs.writeFileSync(path.resolve(__dirname, '..', 'config.ini'), ini.stringify({
-				phpbin: answers.phpbin
-			}));
-		}		
-	});
-};
-
-var urls = {
-	'5.6(x64)': 'http://windows.php.net/downloads/releases/php-5.6.6-Win32-VC11-x64.zip',
-	'5.6(x86)': 'http://windows.php.net/downloads/releases/php-5.6.6-Win32-VC11-x86.zip',
-	'5.5(x64)': 'http://windows.php.net/downloads/releases/php-5.5.22-Win32-VC11-x64.zip',
-	'5.5(x86)': 'http://windows.php.net/downloads/releases/php-5.5.22-Win32-VC11-x86.zip',
-	'5.4(x86)': 'http://windows.php.net/downloads/releases/php-5.4.38-Win32-VC9-x86.zip'
-};
-
-function download(version, callback) {
-	var url = urls[version];
-	
-	callback = (typeof callback === 'function') ? callback : function() {};
-	
-	if( !url ) return callback(new Error('illegal version:' + version));
-	
-	// check cache, if file exists in cache, use it
-	var filename = url.substring(url.lastIndexOf('/') + 1);
-	var userhome = osenv.home();
-	var cachedir = path.resolve(userhome, '.plexi', 'php');
-	var cachefile = path.resolve(cachedir, filename);
-	
-	if( !fs.existsSync(cachedir) ) {
-		try {
-			wrench.mkdirSyncRecursive(cachedir, 0777);
-		} catch(err) {
-			cachedir = path.resolve(__dirname, '..', 'download');
-			cachefile = path.resolve(cachedir, filename);
-			wrench.mkdirSyncRecursive(cachedir);
+			callback(null, answers.phpbin || '');
 		}
-	}
-	
-	if( !fs.existsSync(cachefile) ) {
-		new Download({extract: true, strip: 1, mode: '755' })
-		    .get(url)
-		    .dest(cachefile)
-			.use(function(instance, url) {
-				process.stdout.write(chalk.green('Download\n'));
-			})
-			.use(progress())
-			.run(function (err, files, stream) {
-			    if (err) return callback(err);
-				
-				callback(null, cachefile);
-			});
-	} else {
-		callback(null, cachefile);
-	}
+	});
 }
 
-start();
+var config = {};
+phpinstall(function(err, phpbin) {
+	if( err ) throw err;
+	
+	config.phpbin = phpbin;
+	
+	fs.writeFileSync(path.resolve(__dirname, '..', 'config.ini'), ini.stringify(config));
+});
